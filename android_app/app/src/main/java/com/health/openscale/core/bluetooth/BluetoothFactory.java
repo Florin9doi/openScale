@@ -115,7 +115,7 @@ public class BluetoothFactory {
         if (deviceName.equals("Hoffen BS-8107")) {
             return new BluetoothHoffenBBS8107(context);
 	}
-        if (deviceName.equals("ADV") || deviceName.equals("Chipsea-BLE")) {
+        if (deviceName.equals("ADV") || deviceName.equals("Chipsea-BLE") || deviceName.equals("")) {
             return new BluetoothOKOK(context);
         }
         if (deviceName.equals("BF105") || deviceName.equals("BF720")) {

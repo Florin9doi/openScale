@@ -235,7 +235,8 @@ public class BluetoothSettingsFragment extends Fragment {
     }
 
     private static final String formatDeviceName(BluetoothDevice device) {
-        return formatDeviceName(device.getName(), device.getAddress());
+        String name = device.getName() != null ? device.getName() : "<no name>";
+        return formatDeviceName(name, device.getAddress());
     }
 
     private final BluetoothCentralManagerCallback bluetoothCentralCallback = new BluetoothCentralManagerCallback() {
@@ -313,15 +314,16 @@ public class BluetoothSettingsFragment extends Fragment {
     private void onDeviceFound(final ScanResult bleScanResult) {
         BluetoothDevice device = bleScanResult.getDevice();
         Context context = getContext();
+        String name = device.getName() != null ? device.getName() : "";
 
-        if (device.getName() == null || foundDevices.containsKey(device.getAddress()) || context == null) {
+        if (foundDevices.containsKey(device.getAddress()) || context == null) {
             return;
         }
 
         BluetoothDeviceView deviceView = new BluetoothDeviceView(context);
         deviceView.setDeviceName(formatDeviceName(bleScanResult.getDevice()));
 
-        BluetoothCommunication btDevice = BluetoothFactory.createDeviceDriver(context, device.getName());
+        BluetoothCommunication btDevice = BluetoothFactory.createDeviceDriver(context, name);
         if (btDevice != null) {
             Timber.d("Found supported device %s (driver: %s)",
                     formatDeviceName(device), btDevice.driverName());

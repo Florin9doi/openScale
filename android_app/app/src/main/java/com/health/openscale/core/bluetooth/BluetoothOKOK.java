@@ -8,6 +8,7 @@ import android.os.Looper;
 import android.util.SparseArray;
 
 import com.health.openscale.core.datatypes.ScaleMeasurement;
+import com.health.openscale.core.utils.Converters;
 import com.welie.blessed.BluetoothCentralManager;
 import com.welie.blessed.BluetoothCentralManagerCallback;
 import com.welie.blessed.BluetoothPeripheral;
@@ -18,6 +19,9 @@ import java.util.LinkedList;
 import java.util.List;
 
 import timber.log.Timber;
+
+import static com.health.openscale.core.utils.Converters.WeightUnit.LB;
+import static com.health.openscale.core.utils.Converters.WeightUnit.ST;
 
 public class BluetoothOKOK extends BluetoothCommunication {
     private static final int MANUFACTURER_DATA_ID_V20 = 0x20ca; // 16-bit little endian "header" 0xca 0x20
@@ -43,6 +47,13 @@ public class BluetoothOKOK extends BluetoothCommunication {
         @Override
         public void onDiscoveredPeripheral(@NotNull BluetoothPeripheral peripheral, @NotNull ScanResult scanResult) {
             SparseArray<byte[]> manufacturerSpecificData = scanResult.getScanRecord().getManufacturerSpecificData();
+            StringBuilder x = new StringBuilder();
+            for(int i = 0; i < manufacturerSpecificData.size(); i++) {
+                x.append(manufacturerSpecificData.keyAt(i));
+                x.append(" ");
+            }
+            Timber.w("manufacturerSpecificData : %s", x.toString());
+
             if (manufacturerSpecificData.indexOfKey(MANUFACTURER_DATA_ID_V20) > -1) {
                 byte[] data = manufacturerSpecificData.get(MANUFACTURER_DATA_ID_V20);
                 float divider = 10.0f;
@@ -129,6 +140,55 @@ public class BluetoothOKOK extends BluetoothCommunication {
                 entry.setWeight(weight / divider);
                 addScaleMeasurement(entry);
                 disconnect();
+            } else if (manufacturerSpecificData.size() > 0) {
+                int key = -1;
+                for(int i = 0; i < manufacturerSpecificData.size(); i++) {
+                    int mfgVal = manufacturerSpecificData.keyAt(i);
+                    if ((mfgVal & 0xff) == 0xc0 && (mfgVal >> 8) > 0) { // ignore 0x00c0
+                        key = mfgVal;
+                        break;
+                    }
+                }
+                if (key == -1) {
+                    return;
+                }
+                byte[] data = manufacturerSpecificData.get(key);
+                StringBuilder sb = new StringBuilder(data.length * 2);
+                for(byte b: data)
+                    sb.append(String.format("%02x ", b));
+                Timber.d("onDiscoveredPeripheral : %s", sb.toString());
+
+                float weight = 0;
+                switch ((data[6] >> 2) & 7) {
+                    case 1: // KG
+                    {
+                        int val = ((data[0] & 0xff) << 8) | (data[1] & 0xff);
+                        weight = val / 100f;
+                        Timber.d("Got weight: %f KG", weight);
+                        break;
+                    }
+                    case 4: // LB
+                    {
+                        int val = ((data[0] & 0xff) << 8) | (data[1] & 0xff);
+                        weight = val / 10f;
+                        Timber.d("Got weight: %f LB",  weight);
+                        weight = Converters.toKilogram(weight, LB);
+                        break;
+                    }
+                    case 6: // ST:LB
+                    {
+                        Timber.d("Got weight: %d.%d ST:LB", data[0], data[1]);
+//                        weight = 14f * data[0] + data[1];
+//                        weight = Converters.toKilogram(weight, LB);
+                        weight = data[0] /*ST*/ + data[1] /*LB*/ / 14f;
+                        weight = Converters.toKilogram(weight, ST);
+                        break;
+                    }
+                }
+                ScaleMeasurement entry = new ScaleMeasurement();
+                entry.setWeight(weight);
+                addScaleMeasurement(entry);
+                disconnect();
             }
         }
     };
@@ -151,6 +211,7 @@ public class BluetoothOKOK extends BluetoothCommunication {
 
         ScanFilter.Builder b = new ScanFilter.Builder();
         b.setDeviceAddress(macAddress);
+        filters.add(b.build());
 
         b.setDeviceName("ADV");
         b.setManufacturerData(MANUFACTURER_DATA_ID_V20, null, null);
